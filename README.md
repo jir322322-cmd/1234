@@ -22,10 +22,68 @@
 
 ```bash
 python -m venv .venv
+.venv\Scripts\activate  # Windows PowerShell
 .venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # macOS/Linux
 pip install --upgrade pip
 pip install opencv-python numpy Pillow PySide6
+```
+
+### Windows (PowerShell): если не активируется venv
+
+Если PowerShell пишет, что не удаётся загрузить модуль `.venv`, используйте правильный скрипт активации:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Если PowerShell запрещает запуск скриптов, временно разрешите их для текущего процесса:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+После этого снова запустите:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Альтернатива через `cmd.exe`:
+
+```cmd
+.venv\Scripts\activate.bat
+```
+
+### Windows: если `Activate.ps1` не найден и `pip` не запускается
+
+Это означает, что виртуальное окружение **не было создано** или Python установлен некорректно.
+
+1) Проверьте, что Python установлен и доступен:
+
+```powershell
+py -3.11 --version
+```
+
+Если команда не найдена — установите Python 3.11+ с https://www.python.org/downloads/ и отметьте галочку **“Add Python to PATH”**.
+
+2) Создайте окружение через launcher `py`:
+
+```powershell
+py -3.11 -m venv .venv
+```
+
+3) Убедитесь, что скрипты появились:
+
+```powershell
+Get-ChildItem .\.venv\Scripts
+```
+
+4) Запускайте pip через интерпретатор окружения (работает даже без активации):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install opencv-python numpy Pillow PySide6
 ```
 
 ## Запуск
@@ -38,6 +96,8 @@ python main.py
 
 Файлы должны иметь имя в формате:
 
+- `x,y.jpg` / `x,y.jpeg`
+- `x,y_anySuffix.jpg` / `x,y_anySuffix.jpeg`
 - `x,y.jpg`
 - `x,y_anySuffix.jpg`
 
@@ -73,7 +133,7 @@ python main.py
 
 ### 1) Парсинг координат
 
-`parse_tile_coords` извлекает `(x, y)` из имени файла по шаблону `\d+,\d+(?:_.*)?\.jpg`.
+`parse_tile_coords` извлекает `(x, y)` из имени файла по шаблону `\d+,\d+(?:_.*)?\.(jpg|jpeg)`.
 
 ### 2) Предобработка каждого тайла
 

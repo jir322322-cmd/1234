@@ -124,7 +124,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self,
             "Выбрать JPG тайлы",
             str(Path.cwd()),
-            "JPG Files (*.jpg)"
+            "JPG Files (*.jpg *.jpeg)"
         )
         if files:
             self._paths = files
@@ -135,6 +135,7 @@ class MainWindow(QtWidgets.QMainWindow):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Выбрать папку", str(Path.cwd()))
         if folder:
             paths = sorted(Path(folder).glob("*.jpg"))
+            paths += sorted(Path(folder).glob("*.jpeg"))
             self._paths = [str(path) for path in paths]
             self._update_file_count()
             self._update_start_state()
