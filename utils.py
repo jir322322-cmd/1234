@@ -10,6 +10,7 @@ import numpy as np
 
 def parse_tile_coords(filename: str) -> Optional[Tuple[int, int]]:
     match = re.match(r"^(\d+),(\d+)(?:_.*)?\.(jpg|jpeg)$", filename, re.IGNORECASE)
+    match = re.match(r"^(\d+),(\d+)(?:_.*)?\.jpg$", filename, re.IGNORECASE)
     if not match:
         return None
     return int(match.group(1)), int(match.group(2))

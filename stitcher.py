@@ -94,6 +94,7 @@ def refine_layout(rows: List[List[Tile]], params: StitchParams) -> None:
                 else:
                     proposals.append((left.offset_x + left.w + dx, left.offset_y + dy, score))
             if row_idx > 0 and col_idx < len(rows[row_idx - 1]):
+            if row_idx > 0:
                 top = rows[row_idx - 1][col_idx]
                 dx, dy, score = match_strips_top_bottom(top.img, tile.img, params.overlap_max)
                 if params.debug and params.debug_dir:

@@ -23,6 +23,7 @@
 ```bash
 python -m venv .venv
 .venv\Scripts\activate  # Windows PowerShell
+.venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # macOS/Linux
 pip install --upgrade pip
 pip install opencv-python numpy Pillow PySide6
@@ -97,6 +98,8 @@ python main.py
 
 - `x,y.jpg` / `x,y.jpeg`
 - `x,y_anySuffix.jpg` / `x,y_anySuffix.jpeg`
+- `x,y.jpg`
+- `x,y_anySuffix.jpg`
 
 где:
 
