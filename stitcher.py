@@ -22,7 +22,7 @@ from utils import (
     match_strips_top_bottom,
     parse_tile_coords,
     rotate_image,
-    trim_white_borders,
+    trim_outer_white,
 )
 
 
@@ -41,17 +41,13 @@ def preprocess_tile(path: Path, params: StitchParams, on_log: Optional[Callable[
         raise ValueError(f"Failed to read {path}")
     img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     adaptive_threshold = compute_bg_threshold(img, params.bg_threshold)
-    mask = make_content_mask(img, adaptive_threshold)
-    mask = clean_mask(mask)
-    cropped, cropped_mask = trim_white_borders(img, mask)
+    cropped, cropped_mask = trim_outer_white(img, adaptive_threshold)
     if params.debug and params.debug_dir:
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_mask_before.png"), cropped_mask * 255)
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_crop_before.png"), cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
     angle = estimate_rotation_angle(cropped_mask, params.max_angle)
     rotated = rotate_image(cropped, angle)
-    rotated_mask = make_content_mask(rotated, adaptive_threshold)
-    rotated_mask = clean_mask(rotated_mask)
-    rotated, rotated_mask = trim_white_borders(rotated, rotated_mask)
+    rotated, rotated_mask = trim_outer_white(rotated, adaptive_threshold)
     if params.debug and params.debug_dir:
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_mask_after.png"), rotated_mask * 255)
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_crop_after.png"), cv2.cvtColor(rotated, cv2.COLOR_RGB2BGR))

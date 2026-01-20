@@ -84,6 +84,30 @@ def trim_white_borders(
     return img[y_min:y_max, x_min:x_max], mask[y_min:y_max, x_min:x_max]
 
 
+def trim_outer_white(img: np.ndarray, bg_threshold: int, margin: int = 2) -> Tuple[np.ndarray, np.ndarray]:
+    white = np.all(img > bg_threshold, axis=2).astype(np.uint8) * 255
+    filled = white.copy()
+    height, width = white.shape
+    mask = np.zeros((height + 2, width + 2), dtype=np.uint8)
+
+    for x in range(width):
+        if filled[0, x] == 255:
+            cv2.floodFill(filled, mask, (x, 0), 128)
+        if filled[height - 1, x] == 255:
+            cv2.floodFill(filled, mask, (x, height - 1), 128)
+
+    for y in range(height):
+        if filled[y, 0] == 255:
+            cv2.floodFill(filled, mask, (0, y), 128)
+        if filled[y, width - 1] == 255:
+            cv2.floodFill(filled, mask, (width - 1, y), 128)
+
+    background = filled == 128
+    content_mask = (~background).astype(np.uint8)
+    content_mask = clean_mask(content_mask)
+    return crop_to_mask(img, content_mask, margin=margin)
+
+
 def estimate_rotation_angle(mask: np.ndarray, max_angle: float) -> float:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     angle = 0.0
