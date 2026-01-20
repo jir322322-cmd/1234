@@ -105,7 +105,28 @@ def trim_outer_white(img: np.ndarray, bg_threshold: int, margin: int = 2) -> Tup
     background = filled == 128
     content_mask = (~background).astype(np.uint8)
     content_mask = clean_mask(content_mask)
+    content_mask = remove_border_artifacts(content_mask)
     return crop_to_mask(img, content_mask, margin=margin)
+
+
+def remove_border_artifacts(
+    mask: np.ndarray,
+    min_area_ratio: float = 0.005,
+    min_area_px: int = 2000,
+) -> np.ndarray:
+    height, width = mask.shape
+    total_area = int(mask.sum())
+    if total_area == 0:
+        return mask
+    min_area = max(int(total_area * min_area_ratio), min_area_px)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    cleaned = mask.copy()
+    for label in range(1, num_labels):
+        x, y, w, h, area = stats[label]
+        touches_border = x == 0 or y == 0 or (x + w) >= width or (y + h) >= height
+        if touches_border and area < min_area:
+            cleaned[labels == label] = 0
+    return cleaned
 
 
 def estimate_rotation_angle(mask: np.ndarray, max_angle: float) -> float:
