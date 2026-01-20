@@ -316,9 +316,17 @@ def run_stitching(
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     start = time.time()
 
+    output_clean = output_path.strip().strip('"')
+    output_file = Path(output_clean)
+    if output_file.suffix.lower() not in {".tif", ".tiff"}:
+        output_file = output_file.with_suffix(".tif")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    if output_file.is_dir():
+        raise ValueError(f"Output path is a directory: {output_file}")
+
     if params.debug:
         if params.debug_dir is None:
-            params.debug_dir = Path(output_path).parent / "debug"
+            params.debug_dir = output_file.parent / "debug"
         params.debug_dir.mkdir(exist_ok=True, parents=True)
 
     tile_paths = [Path(p) for p in paths]
@@ -338,11 +346,11 @@ def run_stitching(
     write_debug_positions(tiles, params.debug_dir if params.debug else None)
     if on_progress:
         on_progress(95)
-    save_tiff(canvas, Path(output_path), params.compression)
+    save_tiff(canvas, output_file, params.compression)
 
     if on_progress:
         on_progress(100)
     if on_log:
         on_log(
-            f"Saved {output_path} ({canvas.shape[1]}x{canvas.shape[0]}), tiles={len(tiles)}, time={time.time() - start:.2f}s"
+            f"Saved {output_file} ({canvas.shape[1]}x{canvas.shape[0]}), tiles={len(tiles)}, time={time.time() - start:.2f}s"
         )
