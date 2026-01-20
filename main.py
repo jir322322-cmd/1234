@@ -172,8 +172,7 @@ class MainWindow(QtWidgets.QMainWindow):
             compression=self.combo_compress.currentText(),
             debug=self.chk_debug.isChecked(),
         )
-        raw_output = self.output_edit.text().strip().strip('"')
-        output_path = Path(raw_output).resolve()
+        output_path = Path(self.output_edit.text()).resolve()
         params.debug_dir = output_path.parent / "debug"
         return params
 

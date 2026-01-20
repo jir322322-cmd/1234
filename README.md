@@ -23,6 +23,7 @@
 ```bash
 python -m venv .venv
 .venv\Scripts\activate  # Windows PowerShell
+.venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # macOS/Linux
 pip install --upgrade pip
 pip install opencv-python numpy Pillow PySide6
@@ -97,6 +98,8 @@ python main.py
 
 - `x,y.jpg` / `x,y.jpeg`
 - `x,y_anySuffix.jpg` / `x,y_anySuffix.jpeg`
+- `x,y.jpg`
+- `x,y_anySuffix.jpg`
 
 где:
 
@@ -135,9 +138,9 @@ python main.py
 ### 2) Предобработка каждого тайла
 
 1. **Чтение в RGB**.
-2. **Маска контента**: белые пиксели (все каналы > `bg-threshold`) исключаются, при этом используется адаптивная оценка порога по краям тайла и удаляются тонкие артефакты, касающиеся границ.
+2. **Маска контента**: белые пиксели (все каналы > `bg-threshold`) исключаются.
 3. **Обрезка** белых полей по bounding box маски.
-4. **Оценка угла** по контуру маски + `minAreaRect`, с fallback на Hough-линии, ограничение `|angle| <= max-angle`.
+4. **Оценка угла** по контуру маски + `minAreaRect`, ограничение `|angle| <= max-angle`.
 5. **Поворот** и повторная обрезка.
 
 ### 3) Черновая раскладка
@@ -181,7 +184,6 @@ python main.py
 
 Флаг **Debug режим** сохраняет папку `debug/` рядом с output:
 
- - `*_crop_before.png`, `*_crop_after.png`
- - `*_mask_before.png`, `*_mask_after.png`
- - JSON с результатами matching
- - `positions.json` с финальными координатами
+- `*_crop_before.png`, `*_crop_after.png`
+- JSON с результатами matching
+- `positions.json` с финальными координатами

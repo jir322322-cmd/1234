@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import concurrent.futures
 import json
 import logging
-import os
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -14,15 +12,13 @@ from PIL import Image
 
 from models import StitchParams, Tile
 from utils import (
-    clean_mask,
-    compute_bg_threshold,
+    crop_to_mask,
     estimate_rotation_angle,
     make_content_mask,
     match_strips_left_right,
     match_strips_top_bottom,
     parse_tile_coords,
     rotate_image,
-    trim_outer_white,
 )
 
 
@@ -40,33 +36,23 @@ def preprocess_tile(path: Path, params: StitchParams, on_log: Optional[Callable[
     if img_bgr is None:
         raise ValueError(f"Failed to read {path}")
     img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    adaptive_threshold = compute_bg_threshold(img, params.bg_threshold)
-    cropped, cropped_mask = trim_outer_white(img, adaptive_threshold)
+    mask = make_content_mask(img, params.bg_threshold)
+    cropped, cropped_mask = crop_to_mask(img, mask)
     if params.debug and params.debug_dir:
-        cv2.imwrite(str(params.debug_dir / f"{path.stem}_mask_before.png"), cropped_mask * 255)
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_crop_before.png"), cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
     angle = estimate_rotation_angle(cropped_mask, params.max_angle)
     rotated = rotate_image(cropped, angle)
-    rotated, rotated_mask = trim_outer_white(rotated, adaptive_threshold)
+    rotated_mask = make_content_mask(rotated, params.bg_threshold)
+    rotated, rotated_mask = crop_to_mask(rotated, rotated_mask)
     if params.debug and params.debug_dir:
-        cv2.imwrite(str(params.debug_dir / f"{path.stem}_mask_after.png"), rotated_mask * 255)
         cv2.imwrite(str(params.debug_dir / f"{path.stem}_crop_after.png"), cv2.cvtColor(rotated, cv2.COLOR_RGB2BGR))
     h, w = rotated.shape[:2]
     coords = parse_tile_coords(path.name)
     if coords is None:
         raise ValueError(f"Invalid tile filename {path.name}")
     if on_log:
-        on_log(f"Processed tile {path.name}: angle={angle:.2f}, size={w}x{h}, bg={adaptive_threshold}")
-    return Tile(
-        x=coords[0],
-        y=coords[1],
-        path=path,
-        img=rotated,
-        w=w,
-        h=h,
-        angle=angle,
-        bg_threshold=adaptive_threshold,
-    )
+        on_log(f"Processed tile {path.name}: angle={angle:.2f}, size={w}x{h}")
+    return Tile(x=coords[0], y=coords[1], path=path, img=rotated, w=w, h=h, angle=angle)
 
 
 def build_rows(tiles: List[Tile]) -> List[List[Tile]]:
@@ -99,8 +85,7 @@ def refine_layout(rows: List[List[Tile]], params: StitchParams) -> None:
             proposals = []
             if col_idx > 0:
                 left = row[col_idx - 1]
-                bg_threshold = min(left.bg_threshold, tile.bg_threshold)
-                dx, dy, score = match_strips_left_right(left.img, tile.img, params.overlap_max, bg_threshold)
+                dx, dy, score = match_strips_left_right(left.img, tile.img, params.overlap_max)
                 if params.debug and params.debug_dir:
                     debug_path = params.debug_dir / f"match_left_{tile.x}_{tile.y}.json"
                     debug_path.write_text(json.dumps({"dx": dx, "dy": dy, "score": score}))
@@ -109,9 +94,9 @@ def refine_layout(rows: List[List[Tile]], params: StitchParams) -> None:
                 else:
                     proposals.append((left.offset_x + left.w + dx, left.offset_y + dy, score))
             if row_idx > 0 and col_idx < len(rows[row_idx - 1]):
+            if row_idx > 0:
                 top = rows[row_idx - 1][col_idx]
-                bg_threshold = min(top.bg_threshold, tile.bg_threshold)
-                dx, dy, score = match_strips_top_bottom(top.img, tile.img, params.overlap_max, bg_threshold)
+                dx, dy, score = match_strips_top_bottom(top.img, tile.img, params.overlap_max)
                 if params.debug and params.debug_dir:
                     debug_path = params.debug_dir / f"match_top_{tile.x}_{tile.y}.json"
                     debug_path.write_text(json.dumps({"dx": dx, "dy": dy, "score": score}))
@@ -150,30 +135,25 @@ def compose_canvas(tiles: List[Tile]) -> np.ndarray:
         y1 = y0 + tile.h
         region = canvas[y0:y1, x0:x1]
         region_filled = filled[y0:y1, x0:x1]
-        tile_mask = make_content_mask(tile.img, tile.bg_threshold)
-        tile_mask = clean_mask(tile_mask)
         overlap_mask = region_filled > 0
         if overlap_mask.any():
             ys, xs = np.where(overlap_mask)
             min_ox, max_ox = xs.min(), xs.max()
             min_oy, max_oy = ys.min(), ys.max()
             alpha = np.ones((tile.h, tile.w), dtype=np.float32)
-            overlap_width = max_ox - min_ox + 1
-            overlap_height = max_oy - min_oy + 1
-            if overlap_width <= overlap_height:
+            if min_ox == 0:
                 width = max_ox + 1
                 ramp = np.linspace(0.0, 1.0, width, dtype=np.float32)
                 alpha[:, :width] = np.minimum(alpha[:, :width], ramp)
-            else:
+            if min_oy == 0:
                 height = max_oy + 1
                 ramp = np.linspace(0.0, 1.0, height, dtype=np.float32)[:, None]
                 alpha[:height, :] = np.minimum(alpha[:height, :], ramp)
             alpha = alpha[..., None]
-            mask3 = tile_mask[..., None].astype(np.float32)
             blended = (alpha * tile.img.astype(np.float32) + (1 - alpha) * region.astype(np.float32))
-            region[:] = np.where(mask3 > 0, np.clip(blended, 0, 255).astype(np.uint8), region)
+            region[:] = np.clip(blended, 0, 255).astype(np.uint8)
         else:
-            region[tile_mask > 0] = tile.img[tile_mask > 0]
+            region[:] = tile.img
         filled[y0:y1, x0:x1] = 1
     return canvas
 
@@ -216,32 +196,16 @@ def save_tiff(img: np.ndarray, output_path: Path, compression: str) -> None:
     )
 
 
-def collect_tiles(
-    paths: List[Path],
-    params: StitchParams,
-    on_log: Optional[Callable[[str], None]],
-    on_progress: Optional[Callable[[int], None]],
-    cancel_flag,
-) -> List[Tile]:
+def collect_tiles(paths: Iterable[Path], params: StitchParams, on_log: Optional[Callable[[str], None]], cancel_flag) -> List[Tile]:
     tiles: List[Tile] = []
-    max_workers = min(4, os.cpu_count() or 1)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {}
-        for path in paths:
-            coords = parse_tile_coords(path.name)
-            if coords is None:
-                if on_log:
-                    on_log(f"Skipping invalid tile name: {path.name}")
-                continue
-            future_map[executor.submit(preprocess_tile, path, params, on_log)] = path
-        total = max(len(future_map), 1)
-        completed = 0
-        for future in concurrent.futures.as_completed(future_map):
-            _check_cancel(cancel_flag)
-            tiles.append(future.result())
-            completed += 1
-            if on_progress:
-                on_progress(int((completed / total) * 50))
+    for path in paths:
+        _check_cancel(cancel_flag)
+        coords = parse_tile_coords(path.name)
+        if coords is None:
+            if on_log:
+                on_log(f"Skipping invalid tile name: {path.name}")
+            continue
+        tiles.append(preprocess_tile(path, params, on_log))
     return tiles
 
 
@@ -262,28 +226,24 @@ def write_debug_positions(tiles: List[Tile], debug_dir: Optional[Path]) -> None:
 
 
 def prepare_tiles(
-    paths: List[Path],
+    paths: Iterable[Path],
     params: StitchParams,
     on_progress: Optional[Callable[[int], None]],
     on_log: Optional[Callable[[str], None]],
     cancel_flag,
 ) -> List[Tile]:
     start = time.time()
-    if on_progress:
-        on_progress(0)
-    tiles = collect_tiles(paths, params, on_log, on_progress, cancel_flag)
+    tiles = collect_tiles(paths, params, on_log, cancel_flag)
     if not tiles:
         raise ValueError("No valid tiles found")
 
     rows = build_rows(tiles)
     initial_layout(rows)
     refine_layout(rows, params)
-    if on_progress:
-        on_progress(70)
 
     ordered_tiles = [tile for row in rows for tile in row]
     if on_progress:
-        on_progress(75)
+        on_progress(60)
     if on_log:
         on_log(f"Prepared {len(ordered_tiles)} tiles in {time.time() - start:.2f}s")
     return ordered_tiles
@@ -312,17 +272,9 @@ def run_stitching(
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     start = time.time()
 
-    output_clean = output_path.strip().strip('"')
-    output_file = Path(output_clean)
-    if output_file.suffix.lower() not in {".tif", ".tiff"}:
-        output_file = output_file.with_suffix(".tif")
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    if output_file.is_dir():
-        raise ValueError(f"Output path is a directory: {output_file}")
-
     if params.debug:
         if params.debug_dir is None:
-            params.debug_dir = output_file.parent / "debug"
+            params.debug_dir = Path(output_path).parent / "debug"
         params.debug_dir.mkdir(exist_ok=True, parents=True)
 
     tile_paths = [Path(p) for p in paths]
@@ -333,20 +285,16 @@ def run_stitching(
         preview = build_preview(tiles, params.preview_max_size)
         on_preview(preview)
 
-    if on_progress:
-        on_progress(80)
     canvas = compose_canvas(tiles)
     if on_progress:
         on_progress(90)
 
     write_debug_positions(tiles, params.debug_dir if params.debug else None)
-    if on_progress:
-        on_progress(95)
-    save_tiff(canvas, output_file, params.compression)
+    save_tiff(canvas, Path(output_path), params.compression)
 
     if on_progress:
         on_progress(100)
     if on_log:
         on_log(
-            f"Saved {output_file} ({canvas.shape[1]}x{canvas.shape[0]}), tiles={len(tiles)}, time={time.time() - start:.2f}s"
+            f"Saved {output_path} ({canvas.shape[1]}x{canvas.shape[0]}), tiles={len(tiles)}, time={time.time() - start:.2f}s"
         )

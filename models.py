@@ -16,7 +16,6 @@ class Tile:
     w: int
     h: int
     angle: float
-    bg_threshold: int
     offset_x: int = 0
     offset_y: int = 0
 
